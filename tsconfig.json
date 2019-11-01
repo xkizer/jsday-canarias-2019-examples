@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+        "outDir": "./dist/",
+        "noImplicitAny": true,
+        "module": "es6",
+        "target": "esnext",
+        "allowJs": true,
+        "lib": [
+            "webworker",
+            "dom",
+            "esnext"
+        ]
+    }
+  }

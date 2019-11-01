@@ -1,0 +1,25 @@
+{
+  "name": "canarias-examples",
+  "version": "0.0.1",
+  "description": "Code examples for JSDay Canarias",
+  "private": true,
+  "scripts": {
+    "build": "webpack",
+    "start": "http-server ./dist"
+  },
+  "author": "Chinenye Onuegbu",
+  "license": "ISC",
+  "devDependencies": {
+    "css-loader": "^3.2.0",
+    "html-loader": "^0.5.5",
+    "html-webpack-plugin": "^3.2.0",
+    "mini-css-extract-plugin": "^0.8.0",
+    "ts-loader": "^6.2.1",
+    "typescript": "^3.6.4",
+    "webpack": "^4.41.2",
+    "webpack-cli": "^3.3.9"
+  },
+  "dependencies": {
+    "http-server": "^0.11.1"
+  }
+}
