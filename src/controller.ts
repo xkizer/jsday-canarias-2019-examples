@@ -11,6 +11,7 @@ let totalChunks: number;
 
 export async function setupWorkers(count: number) {
     if (runningJob) {
+        console.warn('Aborting as another job is running');
         // Do not change worker count while a job is running
         return;
     }
@@ -18,8 +19,9 @@ export async function setupWorkers(count: number) {
     const currentThreads = readyWorkers.length;
     const diff = count - currentThreads;
 
-    if (diff === currentThreads) {
+    if (diff === 0) {
         // No change
+        runningJob = false;
         return;
     }
 
@@ -165,8 +167,6 @@ function processNext() {
         })
         .then(() => {
             if (pixelBuffer.length === totalChunks) {
-                console.log('workQueue.length', workQueue.length);
-                console.log('pixelBuffer.length', pixelBuffer.length);
                 queuePaused = true;
     
                 if (pixelBuffer.length) {
@@ -180,8 +180,6 @@ function processNext() {
                     });
     
                     reportDone();
-                    runningJob = false;
-                    pixelBuffer = [];
                 }
     
                 return;
@@ -197,6 +195,8 @@ let setRunningTime: (time: number) => void;
 function reportDone() {
     const endTime = performance.now();
     const runningTime = endTime - startTime;
+    runningJob = false;
+    pixelBuffer = [];
     setRunningTime(runningTime);
 }
 
@@ -241,7 +241,6 @@ function getNextChunk(xChunkSize: number, yChunkSize: number, nextX: number, nex
 }
 
 export async function generate(params: Omit<JobDescriptor, 'bounds'>) {
-    console.log('generating', runningJob);
     if (runningJob) {
         // Do not run two jobs in parallel
         return 0;
@@ -266,7 +265,7 @@ export async function generate(params: Omit<JobDescriptor, 'bounds'>) {
         hasNext = _hasNext;
         nextX = _nextX;
         nextY = _nextY;
-        workQueue.push(params);
+        workQueue.push({...params, size: CANVAS_HEIGHT});
     }
 
     totalChunks = workQueue.length;
@@ -292,8 +291,9 @@ export type JobDescriptor = {
 };
 
 type Bounds = {
-    x: number;
-    y: number;
-    h: number;
-    w: number;
+    x: number; // x-coordinate of this chunk
+    y: number; // y-coordinate of this chunk
+    h: number; // Height of this chunk
+    w: number; // Width of this chunk
+    size: number; // The base size (usually the width or the height)
 };

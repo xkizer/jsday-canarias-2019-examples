@@ -2,18 +2,19 @@ import './style.css';
 import {generate, JobDescriptor, setupWorkers} from './controller';
 
 const DEFAULT_WORKER_COUNT = 1;
-const defaultParams: GenerateParams = {zoom: 300, left: 2.5, top: 1.5, iterations: 1000};
+const defaultParams: GenerateParams = {zoom: 42, left: 2000, top: 1200, iterations: 50};
 let params: GenerateParams;
 
 function updateParams(newParams: Partial<GenerateParams>) {
-    params = {...params, ...newParams};
+    const combinedParams = {...params, ...newParams};
+    params = combinedParams;
 
     const {
         iterations,
         zoom,
         left,
         top,
-    } = params;
+    } = combinedParams;
 
     const iZoom = document.getElementById('zoom') as HTMLInputElement;
     const iLeft = document.getElementById('left') as HTMLInputElement;
@@ -27,7 +28,14 @@ function updateParams(newParams: Partial<GenerateParams>) {
     iIterations.value = String(iterations);
     oTimeTaken.value = '...';
 
-    generate(params).then((timeTaken) => oTimeTaken.value = String(timeTaken));
+    generate(combinedParams).then((timeTaken) => {
+        oTimeTaken.value = String(timeTaken);
+
+        // If the params have changed since we started, re-render
+        if (Object.values(combinedParams).join('-') !== Object.values(params).join('-')) {
+            updateParams(params);
+        }
+    });
 }
 
 async function generateFromForm() {
@@ -49,7 +57,7 @@ async function generateFromForm() {
 }
 
 async function createWorkers(count = DEFAULT_WORKER_COUNT) {
-    await setupWorkers(count);
+    await setupWorkers(count).catch(e => console.error(e));
     const iThreads = document.getElementById('threads') as HTMLInputElement;
     iThreads.value = String(count);
 }
@@ -63,41 +71,46 @@ window.addEventListener('keydown', (e) => {
         return;
     }
 
-    const shiftDivider = Math.log10(params.zoom) + 3;
+    const shiftStep = Math.pow(10, 4 - Math.floor(Math.log10(params.zoom))) / 4;
+    const zoomStep = Math.pow(10, Math.floor(Math.log10(params.zoom)) - 1);
 
     switch(e.keyCode) {
         case 13:
-            updateParams(defaultParams);
+            // Refresh when enter/return is pressed
+            updateParams({});
             break;
         case 40:
-            updateParams({top: Math.max(params.top - 0.2 / shiftDivider, -100)});
+            updateParams({top: params.top - shiftStep});
             break;
         case 38:
-            updateParams({top: Math.min(params.top + 0.2 / shiftDivider, 100)});
+            updateParams({top: params.top + shiftStep});
             break;
         case 37:
-            updateParams({left: Math.min(params.left + 0.2 / shiftDivider, 100)});
+            updateParams({left: params.left + shiftStep});
             break;
         case 39:
-            updateParams({left: Math.max(params.left - 0.2 / shiftDivider, -100)});
+            updateParams({left: params.left - shiftStep});
             break;
         case 187:
-            updateParams({zoom: params.zoom + Math.ceil(params.zoom / 20)});
+            updateParams({zoom: params.zoom + zoomStep});
             break;
         case 189:
-            updateParams({zoom: Math.max(params.zoom - Math.ceil(params.zoom / 20), 10)});
+            updateParams({zoom: Math.max(params.zoom - zoomStep, 10)});
             break;
     }
 });
 
 // Initialize
 (async () => {
+    document
+        .getElementById('config-form')
+        .addEventListener('submit', (e) => {
+            e.preventDefault();
+            generateFromForm();
+        });
+
     await createWorkers();
     updateParams(defaultParams);
-    document.getElementById('config-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        generateFromForm();
-    });
 })();
 
 type GenerateParams = Omit<JobDescriptor, 'bounds'>;
