@@ -1,12 +1,17 @@
 import './style.css';
-import {generate, JobDescriptor, setupWorkers} from './controller';
+import {generate, JobDescriptor, setupWorkers, generateInMainThread, generateWithSharedArray} from './controller';
 
 const DEFAULT_WORKER_COUNT = 1;
+const USE_THREADS = true;
+const USE_SHARED_ARRAY_BUFFER = false;
+
 const defaultParams: GenerateParams = {zoom: 42, left: 2000, top: 1200, iterations: 50};
 let params: GenerateParams;
 
 function updateParams(newParams: Partial<GenerateParams>) {
     const combinedParams = {...params, ...newParams};
+    const generatorFunction = USE_THREADS ?
+        (USE_SHARED_ARRAY_BUFFER ? generateWithSharedArray : generate) : generateInMainThread;
     params = combinedParams;
 
     const {
@@ -28,7 +33,7 @@ function updateParams(newParams: Partial<GenerateParams>) {
     iIterations.value = String(iterations);
     oTimeTaken.value = '...';
 
-    generate(combinedParams).then((timeTaken) => {
+    generatorFunction(combinedParams).then((timeTaken) => {
         oTimeTaken.value = String(timeTaken);
 
         // If the params have changed since we started, re-render
@@ -46,7 +51,7 @@ async function generateFromForm() {
     const iIterations = document.getElementById('iterations') as HTMLInputElement;
 
     const threadCount = Number(iThreads.value);
-    await createWorkers(threadCount);
+    USE_THREADS && await createWorkers(threadCount);
 
     updateParams({
         left: Number(iLeft.value),

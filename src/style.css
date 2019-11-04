@@ -3,3 +3,38 @@ body {
     width: 100vw;
     height: 100vh;
 }
+
+#config-form {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #f938;
+    padding: 10px;
+    border-radius: 5px;
+    color: #fff;
+}
+
+#generate-btn {
+    display: block;
+    background: #600;
+    color: #fff;
+    font-size: 18px;
+    width: 100%;
+    height: 30px;
+    cursor: pointer;
+}
+
+#config-form label {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    padding: 3px 0;
+}
+
+#config-form label input,
+#config-form label output {
+    font-size: 18px;
+    background: #fff;
+    height: 20px;
+    padding: 4px;
+    color: #000;
+}

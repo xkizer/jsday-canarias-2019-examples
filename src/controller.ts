@@ -1,4 +1,5 @@
 import {CANVAS_WIDTH, CANVAS_HEIGHT, drawToCanvas} from './canvas'
+import { generateMandelbrotSlice } from './mandelbrot';
 
 let runningJob = false;
 let THREADS_COUNT = 12;
@@ -27,6 +28,7 @@ export async function setupWorkers(count: number) {
 
     // Prevent a job from running while we are creating/killing threads
     runningJob = true;
+    THREADS_COUNT = count;
 
     if (diff < 0) {
         // We have more threads than needed, kill threads
@@ -52,6 +54,7 @@ export async function setupWorkers(count: number) {
             processJob,
             id,
             kill,
+            processSabJob,
         };
 
         console.time('Start ' + id)
@@ -90,6 +93,21 @@ export async function setupWorkers(count: number) {
                     descriptor: job,
                 });
             });
+        }
+
+        function processSabJob(
+            tasksBuffer: SharedArrayBuffer,
+            controlBuffer: SharedArrayBuffer,
+            pixelsBuffer: SharedArrayBuffer    
+        ) {
+            worker.postMessage(
+                {
+                    type: 'sab-job',
+                    tasksBuffer,
+                    controlBuffer,
+                    pixelsBuffer,
+                }
+            );
         }
 
         return descriptor;
@@ -240,7 +258,7 @@ function getNextChunk(xChunkSize: number, yChunkSize: number, nextX: number, nex
     };
 }
 
-export async function generate(params: Omit<JobDescriptor, 'bounds'>) {
+export async function generate(params: Omit<JobDescriptor, 'bounds'>): Promise<number> {
     if (runningJob) {
         // Do not run two jobs in parallel
         return 0;
@@ -276,10 +294,146 @@ export async function generate(params: Omit<JobDescriptor, 'bounds'>) {
     });
 }
 
+export async function generateInMainThread(params: Omit<JobDescriptor, 'bounds'>): Promise<number> {
+    startTime = performance.now();
+    const bounds = {
+        x: 0,
+        y: 0,
+        w: CANVAS_WIDTH,
+        h: CANVAS_HEIGHT,
+        size: CANVAS_HEIGHT,
+    };
+    
+    const pixels = generateMandelbrotSlice({
+        ...params,
+        bounds,
+    });
+
+    applyPatch(bounds, pixels)
+    const endTime = performance.now();
+    return endTime - startTime;
+}
+
+export async function generateWithSharedArray(params: Omit<JobDescriptor, 'bounds'>): Promise<number> {
+    if (runningJob) {
+        // Do not run two jobs in parallel
+        return 0;
+    }
+
+    runningJob = true;
+    currentParams = params;
+
+    startTime = performance.now();
+    console.log('Generating', `threads=${THREADS_COUNT} params:`, params);
+    // Divide the work by the number of threads squared
+    const xChunkSize = Math.ceil(CANVAS_WIDTH / THREADS_COUNT);
+    const yChunkSize = Math.ceil(CANVAS_HEIGHT / THREADS_COUNT);
+
+    let nextX = 0;
+    let nextY = 0;
+    let hasNext = true;
+    const tasks = [];
+    
+    // Chunk up the canvas to create a work queue
+    while(hasNext) {
+        const {hasNext: _hasNext, params, nextX: _nextX, nextY: _nextY} = getNextChunk(xChunkSize, yChunkSize, nextX, nextY);
+        hasNext = _hasNext;
+        nextX = _nextX;
+        nextY = _nextY;
+        tasks.push({...params});
+    }
+
+    const tasksCount = tasks.length;
+
+    /*
+     * Build the tasksArray
+     * The format is as follows:
+     * [
+     *    x, y, w, h,
+     *    ... 
+     *    x, y, w, h,
+     * ]
+     */
+    const tasksBuffer = new SharedArrayBuffer(tasksCount * 4 * 4); // 32-bit
+    const tasksArray = new Uint32Array(tasksBuffer);
+
+    tasks.forEach((task, i) => {
+        const startIndex = i * 4;
+        tasksArray[startIndex + 0] = task.x;
+        tasksArray[startIndex + 1] = task.y;
+        tasksArray[startIndex + 2] = task.w;
+        tasksArray[startIndex + 3] = task.h;
+    });
+
+    /*
+     * Build the control buffer. This is used by the main thread 
+     * and the workers to coordinate their jobs
+     * 
+     * The format is as follows:
+     * [
+     *     nextIndex, totalCount, completedCount, size, zoom, left, top, iterations, width, height
+     * ]
+     */
+    const controlBuffer = new SharedArrayBuffer(4 * 10);
+    const controlFloat = new Float32Array(controlBuffer);
+    const controlArray = new Uint32Array(controlBuffer);
+
+    controlArray[0] = 0;
+    controlArray[1] = tasksCount;
+    controlArray[2] = 0;
+    controlArray[3] = CANVAS_HEIGHT;
+    controlArray[4] = params.zoom;
+    controlFloat[5] = params.left; // <-- note that we're using controlFloat here and in the next line
+    controlFloat[6] = params.top;
+    controlArray[7] = params.iterations;
+    controlArray[8] = CANVAS_WIDTH;
+    controlArray[9] = CANVAS_HEIGHT;
+
+    /*
+     * Build the image data buffer
+     * The format is as follows:
+     * [
+     *     r, g, b, a,
+     *     ....
+     *     r, g, b, a,
+     * ]
+     */
+    const pixelsBuffer = new SharedArrayBuffer(CANVAS_HEIGHT * CANVAS_WIDTH * 4);
+    const pixelsArray = new Uint8Array(pixelsBuffer);
+
+    // Poll the control array for completion
+    const interval = setInterval(() => {
+        const completed = Atomics.load(controlArray, 2);
+
+        if (completed === tasksCount) {
+            // Done...
+            console.log('WE ARE DONE!', 'Render the image');
+            applyPatch({x: 0, y: 0, w: CANVAS_WIDTH, h: CANVAS_HEIGHT, size: CANVAS_HEIGHT}, Uint8ClampedArray.from(pixelsArray));
+            clearInterval(interval);
+            runningJob = false;
+            setRunningTime(performance.now() - startTime);
+        }
+    }, 4);
+
+    // Start processing
+    readyWorkers.forEach((worker) => {
+        worker.processSabJob(tasksBuffer, controlBuffer, pixelsBuffer);
+    });
+    
+    return new Promise((resolve) => {
+        setRunningTime = resolve;
+    });
+}
+
 type WorkerDescriptor = {
     id: string;
     processJob(job: JobDescriptor): Promise<unknown>;
-    kill(): void
+    kill(): void;
+    processSabJob(
+        tasksBuffer: SharedArrayBuffer,
+        controlBuffer: SharedArrayBuffer,
+        pixelsBuffer: SharedArrayBuffer
+    ): void;
 };
 
 export type JobDescriptor = {

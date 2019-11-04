@@ -38,7 +38,7 @@ export function generateMandelbrotSlice(descriptor: JobDescriptor): Uint8Clamped
             }
 
             let brightness = n === iterations ? 0 : (Math.sqrt(n / iterations)) * 255;
-            pixels.push(brightness * 2, brightness, brightness, 255);
+            pixels.push(brightness, brightness * 2, brightness * 2, 255);
         }
     }
     
