@@ -3,9 +3,9 @@ import {generate, JobDescriptor, setupWorkers, generateInMainThread, generateWit
 
 const DEFAULT_WORKER_COUNT = 1;
 const USE_THREADS = true;
-const USE_SHARED_ARRAY_BUFFER = false;
+const USE_SHARED_ARRAY_BUFFER = true;
 
-const defaultParams: GenerateParams = {zoom: 42, left: 2000, top: 1200, iterations: 50};
+const defaultParams: GenerateParams = {zoom: 42, left: 2000, top: 1200, iterations: 20};
 let params: GenerateParams;
 
 function updateParams(newParams: Partial<GenerateParams>) {
