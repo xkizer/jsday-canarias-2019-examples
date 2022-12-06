@@ -20,6 +20,6 @@
     "webpack-cli": "^3.3.9"
   },
   "dependencies": {
-    "http-server": "^0.11.1"
+    "http-server": "^0.11.2"
   }
 }
